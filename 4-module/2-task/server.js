@@ -18,52 +18,57 @@ server.on('request', (req, res) => {
 
   switch (req.method) {
     case 'POST':
-      console.log('начальная дата', new Date());
       let writeFinished = false; // Взводится в обработчике finish
-      let writeDestroyed = false; // Взводится перед принудительным вызовом writeStream.destroy()
+      //let writeDestroyed = false; // Взводится перед принудительным вызовом writeStream.destroy()
       let wasWrited = false; // Взводится в обработчике finish если были байты для записи
-      let reqDestroyed = false; // Взводится перед принудительным вызовом req.destroy()
-      const limitStream = new limitSizeStream({limit: 1 * 1024 * 1024});
+      let wasErrorLimit = false; 
+      const limitStream = new limitSizeStream({limit: 5 * 1024 * 1024});
       const writeStream = fs.createWriteStream(filepath, {flags: "wx"});
       req.on("aborted", () => {
-        if (reqDestroyed) return;
-        writeDestroyed = true;
         writeStream.destroy();
         res.statusCode = 499;
         res.end('Client Closed Request');
       });
       limitStream.on("error", (error) => {
-        reqDestroyed = true;
-        writeDestroyed = true;
+        if (wasErrorLimit) return;
+        wasErrorLimit = true;
+        res.setHeader('Connection', 'close');
         res.statusCode = 413;
         res.end("File Too Large");
-        console.log(`statusCode ${res.statusCode} дата`, new Date());
-        req.destroy();
         writeStream.destroy();
       });
-      writeStream.once("open", () => req.pipe(limitStream).pipe(writeStream));
+      //writeStream.once("open", () => req.pipe(limitStream).pipe(writeStream));
+      writeStream.once("open", () => req.pipe(writeStream));
       writeStream.once("finish", () => {
-        if (writeDestroyed) return;
         writeFinished = true;
         wasWrited = writeStream.bytesWritten > 0;
+        if(writeStream.bytesWritten <= (1 * 1024 * 1024)) return;
+        wasWrited = false;
+        wasErrorLimit = true;
       });
       writeStream.once("close", () => {
         if (writeFinished) {
           if (wasWrited) {
             res.statusCode = 201;
             res.end("OK");
-          } else fs.unlink(filepath, (error) => res.end("OK"));
-        } else fs.unlink(filepath, (error) => {console.log('файл удален', new Date())});
+          } else fs.unlink(filepath, (error) => {
+            if (wasErrorLimit) {
+              res.statusCode = 413;
+              res.end("File Too Large");
+            } else {
+              res.end("OK");
+            }
+          });
+        } else fs.unlink(filepath, (error) => {});
       });
       writeStream.on("error", (error) => {
         if (error.code === 'EEXIST') {
+          res.setHeader('Connection', 'close');
           res.statusCode = 409;
           res.end('File Already Exists');
-          reqDestroyed = true;
-          req.destroy();
         }
       });
-
+            
       break;
 
     default:
