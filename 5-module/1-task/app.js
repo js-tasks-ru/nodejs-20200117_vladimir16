@@ -12,7 +12,6 @@ router.get('/subscribe', async (ctx, next) => {
         ctx.app.once('publish', (message) => resolve(message));
     });
     ctx.req.once('aborted', () => ctx.app.emit('publish', ''));
-    console.log(`количество слушателей ${ctx.app.listenerCount('publish')}`);
     const message = await waitPublish;
     if (message) ctx.body = message;
     else ctx.status = 404;
