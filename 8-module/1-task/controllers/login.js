@@ -9,9 +9,8 @@ module.exports.login = async function login(ctx, next) {
       ctx.body = {error: info};
       return;
     }
-
     const token = await ctx.login(user);
 
-    ctx.body = {token};
+    ctx.body = {token: token};
   })(ctx, next);
 };
